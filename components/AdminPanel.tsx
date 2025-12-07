@@ -1,13 +1,13 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Lock, RefreshCw, Plus, Trash2, Calendar, Clock, 
   FileText, Settings, BarChart3, Copy,
   Sparkles, Key, Search, Image as ImageIcon,
-  PenSquare, CloudUpload, ExternalLink, ListPlus, EyeOff, FileDown, Layers, ChevronUp, ChevronDown, FileType, Repeat, CheckCircle, Save, Link as LinkIcon
+  PenSquare, CloudUpload, ExternalLink, ListPlus, EyeOff, FileDown, Layers, ChevronUp, ChevronDown, FileType, Repeat, CheckCircle, Save, Link as LinkIcon, Users, UserPlus, Download
 } from 'lucide-react';
-import { Question, ExamConfig, StudentSubmission, ExamSection, CurriculumItem } from '../types';
+import { Question, ExamConfig, StudentSubmission, ExamSection, StudentAccount } from '../types';
 import { generateQuizQuestions, extractQuestionsFromInput, generateSimilarQuestions } from '../services/geminiService';
+import { parseStudentAccountsFromCSV } from '../utils/csvParser';
 import MathRenderer from './MathRenderer';
 import * as docx from 'docx';
 
@@ -15,17 +15,21 @@ interface AdminPanelProps {
   reviewQuestions: Question[];
   examQuestions: Question[];
   createdExams: ExamConfig[];
-  submissions: StudentSubmission[]; 
+  submissions: StudentSubmission[];
+  studentAccounts: StudentAccount[]; // NEW
   onDataUpdate: (questions: Question[]) => void;
   onCreateExam: (exam: ExamConfig) => void;
   onDeleteExam: (id: string) => void;
   onClearExams: () => void;
-  onClearSubmissions: () => void; 
-  reviewSheetLink: string; // Deprecated but kept for type safety
-  examSheetLink: string;   // Deprecated but kept for type safety
+  onClearSubmissions: () => void;
+  onAddStudent: (student: StudentAccount) => void; // NEW
+  onDeleteStudent: (id: string) => void; // NEW
+  onImportStudents: (students: StudentAccount[]) => void; // NEW
+  reviewSheetLink: string;
+  examSheetLink: string;
 }
 
-type AdminTab = 'config' | 'results' | 'ai-gen';
+type AdminTab = 'config' | 'results' | 'ai-gen' | 'students';
 type AIGenMode = 'topic' | 'file';
 
 // --- UTILS ---
@@ -130,11 +134,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   examQuestions,
   createdExams,
   submissions,
+  studentAccounts,
   onDataUpdate, 
   onCreateExam, 
   onDeleteExam, 
   onClearExams,
-  onClearSubmissions
+  onClearSubmissions,
+  onAddStudent,
+  onDeleteStudent,
+  onImportStudents
 }) => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [password, setPassword] = useState('');
@@ -142,6 +150,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [activeTab, setActiveTab] = useState<AdminTab>('config');
 
   const [resultSearch, setResultSearch] = useState('');
+
+  // Student Management State
+  const [newStudentId, setNewStudentId] = useState('');
+  const [newStudentPass, setNewStudentPass] = useState('123');
+  const [newStudentName, setNewStudentName] = useState('');
+  const [newStudentClass, setNewStudentClass] = useState('');
+  const [importCsvText, setImportCsvText] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
 
   const [aiMode, setAiMode] = useState<AIGenMode>('topic');
   const [aiConfig, setAiConfig] = useState({
@@ -231,6 +247,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
      );
   }, [submissions, resultSearch]);
 
+  const filteredStudents = useMemo(() => {
+    if (!studentSearch) return studentAccounts;
+    const term = studentSearch.toLowerCase();
+    return studentAccounts.filter(s => 
+      s.id.toLowerCase().includes(term) ||
+      s.name.toLowerCase().includes(term) ||
+      s.className.toLowerCase().includes(term)
+    );
+  }, [studentAccounts, studentSearch]);
+
   const overallAvg = useMemo(() => {
     if (submissions.length === 0) return "0.0";
     const totalScore = submissions.reduce((sum, s) => sum + s.score, 0);
@@ -244,6 +270,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       setLoginError('');
     } else {
       setLoginError('Mật khẩu không đúng');
+    }
+  };
+
+  const handleAddStudentClick = () => {
+    if (!newStudentId || !newStudentPass || !newStudentName) {
+      alert("Vui lòng điền ID, Tên và Mật khẩu!");
+      return;
+    }
+    onAddStudent({
+      id: newStudentId,
+      password: newStudentPass,
+      name: newStudentName,
+      className: newStudentClass
+    });
+    setNewStudentId('');
+    setNewStudentName('');
+    setNewStudentClass('');
+    setNewStudentPass('123'); // Reset to default
+  };
+
+  const handleBulkImportStudents = () => {
+    if (!importCsvText) return;
+    const students = parseStudentAccountsFromCSV(importCsvText);
+    if (students.length > 0) {
+      onImportStudents(students);
+      setImportCsvText('');
+      alert(`Đã tìm thấy ${students.length} tài khoản.`);
+    } else {
+      alert("Không tìm thấy dữ liệu hợp lệ. Hãy kiểm tra định dạng CSV.");
     }
   };
 
@@ -692,6 +747,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       <div className="flex gap-2 border-b border-slate-200 overflow-x-auto">
         <button onClick={() => setActiveTab('config')} className={`px-6 py-3 font-medium text-sm rounded-t-lg flex gap-2 ${activeTab === 'config' ? 'bg-white border-t border-x text-blue-600' : 'bg-slate-50 text-slate-500'}`}><ListPlus className="w-4 h-4"/> Cấu Hình Thi</button>
+        <button onClick={() => setActiveTab('students')} className={`px-6 py-3 font-medium text-sm rounded-t-lg flex gap-2 ${activeTab === 'students' ? 'bg-white border-t border-x text-green-600' : 'bg-slate-50 text-slate-500'}`}><Users className="w-4 h-4"/> Quản Lý Học Sinh</button>
         <button onClick={() => setActiveTab('ai-gen')} className={`px-6 py-3 font-medium text-sm rounded-t-lg flex gap-2 ${activeTab === 'ai-gen' ? 'bg-white border-t border-x text-violet-600' : 'bg-slate-50 text-slate-500'}`}><Sparkles className="w-4 h-4"/> AI Tạo Câu Hỏi</button>
         <button onClick={() => setActiveTab('results')} className={`px-6 py-3 font-medium text-sm rounded-t-lg flex gap-2 ${activeTab === 'results' ? 'bg-white border-t border-x text-indigo-600' : 'bg-slate-50 text-slate-500'}`}><BarChart3 className="w-4 h-4"/> Kết Quả Thi</button>
       </div>
@@ -854,6 +910,114 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {/* STUDENT MANAGEMENT TAB */}
+      {activeTab === 'students' && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-left-4 duration-300">
+           {/* Left: Add Student Form */}
+           <div className="lg:col-span-1 space-y-6">
+              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                 <h3 className="font-bold text-slate-800 mb-4 flex items-center gap-2"><UserPlus className="w-5 h-5 text-green-600"/> Thêm Học Sinh</h3>
+                 <div className="space-y-4">
+                     <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Mã học sinh / ID (Bắt buộc)</label>
+                        <input type="text" value={newStudentId} onChange={e => setNewStudentId(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="VD: HS001" />
+                     </div>
+                     <div>
+                        <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Họ và tên</label>
+                        <input type="text" value={newStudentName} onChange={e => setNewStudentName(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="VD: Nguyễn Văn A" />
+                     </div>
+                     <div className="grid grid-cols-2 gap-3">
+                         <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Lớp</label>
+                            <input type="text" value={newStudentClass} onChange={e => setNewStudentClass(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="9A1" />
+                         </div>
+                         <div>
+                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Mật khẩu</label>
+                            <input type="text" value={newStudentPass} onChange={e => setNewStudentPass(e.target.value)} className="w-full px-3 py-2 border rounded-lg text-sm" placeholder="Mặc định: 123" />
+                         </div>
+                     </div>
+                     
+                     <button onClick={handleAddStudentClick} className="w-full py-2.5 bg-green-600 hover:bg-green-700 text-white font-bold rounded-lg shadow-md transition-all flex items-center justify-center gap-2">
+                        <Plus className="w-4 h-4"/> Thêm Học Sinh
+                     </button>
+                 </div>
+              </div>
+
+              {/* Bulk Import */}
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+                 <h3 className="font-bold text-slate-700 mb-2 flex items-center gap-2 text-sm"><CloudUpload className="w-4 h-4"/> Nhập nhanh từ CSV/Excel</h3>
+                 <p className="text-xs text-slate-500 mb-3">Copy cột từ Excel và dán vào đây (ID, Pass, Tên, Lớp)</p>
+                 <textarea 
+                    className="w-full h-32 p-2 border rounded text-xs font-mono mb-3" 
+                    placeholder={`HS01,123,Nguyễn Văn A,9A1\nHS02,123,Trần Thị B,8A2`}
+                    value={importCsvText}
+                    onChange={e => setImportCsvText(e.target.value)}
+                 ></textarea>
+                 <button onClick={handleBulkImportStudents} className="w-full py-2 bg-white border border-slate-300 text-slate-700 font-bold rounded-lg hover:bg-slate-100 transition-all text-sm">
+                    Xử lý & Thêm
+                 </button>
+              </div>
+           </div>
+
+           {/* Right: Student List */}
+           <div className="lg:col-span-2 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm h-fit">
+               <div className="flex justify-between items-center mb-6">
+                   <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                       <Users className="w-5 h-5 text-slate-500"/> Danh Sách Học Sinh ({studentAccounts.length})
+                   </h3>
+                   <div className="relative w-64">
+                       <input type="text" className="w-full pl-9 pr-3 py-2 border rounded-lg text-sm" placeholder="Tìm kiếm..." value={studentSearch} onChange={e => setStudentSearch(e.target.value)} />
+                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                   </div>
+               </div>
+
+               <div className="overflow-x-auto max-h-[500px] overflow-y-auto border rounded-lg">
+                   <table className="w-full text-sm text-left">
+                       <thead className="bg-slate-50 text-slate-500 uppercase font-bold text-xs sticky top-0">
+                           <tr>
+                               <th className="px-4 py-3">ID / Mã HS</th>
+                               <th className="px-4 py-3">Mật khẩu</th>
+                               <th className="px-4 py-3">Họ Tên</th>
+                               <th className="px-4 py-3">Lớp</th>
+                               <th className="px-4 py-3 text-right">Thao tác</th>
+                           </tr>
+                       </thead>
+                       <tbody className="divide-y divide-slate-100">
+                           {filteredStudents.length === 0 ? (
+                               <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">Không tìm thấy học sinh nào.</td></tr>
+                           ) : (
+                               filteredStudents.map((st) => (
+                                   <tr key={st.id} className="hover:bg-slate-50 transition-colors">
+                                       <td className="px-4 py-3 font-mono font-bold text-indigo-600">{st.id}</td>
+                                       <td className="px-4 py-3 text-slate-500 font-mono">{st.password}</td>
+                                       <td className="px-4 py-3 font-medium text-slate-700">{st.name}</td>
+                                       <td className="px-4 py-3 text-slate-600">{st.className}</td>
+                                       <td className="px-4 py-3 text-right">
+                                           <button onClick={() => onDeleteStudent(st.id)} className="text-red-400 hover:text-red-600 bg-red-50 hover:bg-red-100 p-1.5 rounded transition-colors"><Trash2 className="w-4 h-4"/></button>
+                                       </td>
+                                   </tr>
+                               ))
+                           )}
+                       </tbody>
+                   </table>
+               </div>
+               
+               <div className="mt-4 flex justify-end">
+                   <button 
+                     onClick={() => {
+                        const content = studentAccounts.map(s => `${s.id}\t${s.password}\t${s.name}\t${s.className}`).join('\n');
+                        navigator.clipboard.writeText(content);
+                        alert("Đã copy danh sách vào bộ nhớ đệm!");
+                     }}
+                     className="text-xs text-indigo-600 hover:underline flex items-center gap-1"
+                   >
+                     <Copy className="w-3 h-3"/> Copy toàn bộ danh sách ra Excel
+                   </button>
+               </div>
+           </div>
+        </div>
+      )}
+
       {/* AI Gen Tab Content */}
       {activeTab === 'ai-gen' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in slide-in-from-right-4 duration-300">
@@ -882,7 +1046,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div>
                                     <label className="text-xs font-bold text-slate-500 block mb-1">Lớp</label>
                                     <select className="w-full p-2 border rounded-lg text-sm" value={aiConfig.grade} onChange={e => setAiConfig({...aiConfig, grade: e.target.value})}>
-                                        {examAvailableClasses.length > 0 ? examAvailableClasses.map(c => <option key={c} value={c}>{c}</option>) : <option value="9">9</option>}
+                                        <option value="6">6</option>
+                                        <option value="7">7</option>
+                                        <option value="8">8</option>
+                                        <option value="9">9</option>
+                                        {examAvailableClasses.filter(c => !['6','7','8','9'].includes(c)).map(c => <option key={c} value={c}>{c}</option>)}
                                     </select>
                                 </div>
                                 <div>

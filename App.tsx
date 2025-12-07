@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import AdminPanel from './components/AdminPanel';
 import QuizCard from './components/QuizCard';
@@ -253,6 +252,30 @@ const App: React.FC = () => {
   };
   const handleClearExams = () => { if (confirm("CẢNH BÁO: Xóa TOÀN BỘ danh sách đề thi?")) setCreatedExams([]); };
   const handleClearSubmissions = () => setSubmissions([]);
+
+  // STUDENT MANAGEMENT HANDLERS
+  const handleAddStudent = (student: StudentAccount) => {
+      if (studentAccounts.some(s => s.id === student.id)) {
+          alert("Mã học sinh đã tồn tại!");
+          return;
+      }
+      setStudentAccounts(prev => [...prev, student]);
+  };
+
+  const handleDeleteStudent = (id: string) => {
+      if (confirm("Xóa học sinh này?")) {
+        setStudentAccounts(prev => prev.filter(s => s.id !== id));
+      }
+  };
+
+  const handleImportStudents = (students: StudentAccount[]) => {
+      // Merge unique IDs
+      setStudentAccounts(prev => {
+          const existingIds = new Set(prev.map(s => s.id));
+          const newStudents = students.filter(s => !existingIds.has(s.id));
+          return [...prev, ...newStudents];
+      });
+  };
 
   const handleStartReview = () => {
     setStudentInfo(null); 
@@ -583,11 +606,15 @@ const App: React.FC = () => {
                     examQuestions={reviewQuestions} 
                     createdExams={createdExams} 
                     submissions={submissions} 
+                    studentAccounts={studentAccounts} // PASS STUDENT DATA
                     onDataUpdate={handleDataUpdate} 
                     onCreateExam={handleCreateExam} 
                     onDeleteExam={handleDeleteExam} 
                     onClearExams={handleClearExams} 
                     onClearSubmissions={handleClearSubmissions} 
+                    onAddStudent={handleAddStudent} // PASS HANDLER
+                    onDeleteStudent={handleDeleteStudent} // PASS HANDLER
+                    onImportStudents={handleImportStudents} // PASS HANDLER
                     reviewSheetLink="" 
                     examSheetLink=""
                 />
